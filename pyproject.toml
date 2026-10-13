@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shadow"
+version = "4.1.0"
+description = "SHADOW: Laboratorium Eksperimen ML Lokal, Auditable, dan Anti-Leakage"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "scikit-learn>=1.3.0",
+    "scipy>=1.10.0",
+    "psutil>=5.9.0",
+    "pyarrow>=12.0.0",
+    "pyyaml>=6.0",
+    "cryptography>=41.0.0",
+    "nbformat>=5.9.0",
+    "nbclient>=0.8.0",
+    "nbconvert>=7.7.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+]
+arena = [
+    "streamlit>=1.30.0",
+    "matplotlib>=3.7.0",
+]
+
+[project.scripts]
+shadow = "shadow_core.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["shadow_core*", "shadow_eval*"]

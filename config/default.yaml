@@ -1,0 +1,66 @@
+# SHADOW — Konfigurasi Default v4.1 (PRD Lampiran B.4)
+# Semua nilai berstatus [A] kecuali dinyatakan lain sebagai [K]
+
+sealed_fraction: 0.20
+cv:
+  folds: 5
+  repeats: 3
+
+tuning:
+  iterations: 30
+  fast_iterations: 8
+  inner_cv: 3
+
+canary:
+  permutations: 5
+  floor: 0.05
+  se_multiplier: 3
+
+l1:
+  auc: 0.99
+  r2: 0.99
+
+delta:
+  scale_0_1: 0.01
+  regression_iqr_fraction: 0.01
+
+imbalance_threshold: 0.20
+
+small_data:
+  rows: 500
+  minority_in_sealed: 50
+
+seeds_robustness: 5
+selection_bias_warning: 50
+
+generalization_gap:
+  absolute: 0.05
+  regression_relative: 0.10
+
+repro_tolerance: 0.001
+
+limits:
+  max_rows: 100000
+  max_mb: 50
+  n_jobs: 2
+  rf_trees: 200
+  run_minutes_core: 10
+  run_minutes_agents: 45
+  cell_seconds: 300
+  ram_alert_percent: 90
+
+llm:
+  host: "127.0.0.1:11434"
+  temperature: 0
+  seed: 42
+  context: 4096
+  max_output: 700
+  retries: 2
+
+agents:
+  max_critique_rounds: 3
+  agent_time_share: 0.35
+
+budget_hours:
+  pilot: 40
+  benchmark: 120

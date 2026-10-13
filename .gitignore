@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / cache files
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.pytest_cache/
+
+# Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Output directories & dynamic run artifacts (keep git clean & lightweight)
+runs/
+data/runs/
+*.parquet
+*.joblib
+*.bin
+*.spent
+*.key
+
+# Temporary migration & update scripts
+update_engine.py
+update_standalone.py
+
+# Imported duplicate folders
+claude_import/
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.log

@@ -1,0 +1,1752 @@
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+
+// =============================================================================
+// SHADOW MULTI-AGENT ARENA: 6 AGENT SQUAD DEFINITIONS (1280x720 WIDESCREEN)
+// =============================================================================
+const AGENTS = [
+  {
+    "id": "auditor",
+    "name": "DATA AUDITOR",
+    "role": "Detektif Kejujuran Data",
+    "color": "#2dd4bf",
+    "bg": "rgba(13, 42, 46, 0.92)",
+    "x": 190,
+    "y": 170
+  },
+  {
+    "id": "architect",
+    "name": "MODEL ARCHITECT",
+    "role": "Arsitek Taktik AI",
+    "color": "#facc15",
+    "bg": "rgba(44, 38, 12, 0.92)",
+    "x": 640,
+    "y": 92
+  },
+  {
+    "id": "statistician",
+    "name": "STATISTICIAN",
+    "role": "Wasit Penilai Skor Ilmiah",
+    "color": "#c084fc",
+    "bg": "rgba(36, 18, 54, 0.92)",
+    "x": 640,
+    "y": 535
+  },
+  {
+    "id": "feature",
+    "name": "FEATURE STRATEGIST",
+    "role": "Peracik Fitur & NLP",
+    "color": "#f472b6",
+    "bg": "rgba(44, 16, 34, 0.92)",
+    "x": 190,
+    "y": 490
+  },
+  {
+    "id": "robustness",
+    "name": "ROBUSTNESS INVESTIGATOR",
+    "role": "Penguji Ketahanan & Kanari",
+    "color": "#38bdf8",
+    "bg": "rgba(14, 34, 58, 0.92)",
+    "x": 1090,
+    "y": 170
+  },
+  {
+    "id": "skeptic",
+    "name": "SKEPTIC",
+    "role": "Si Paling Kritis & Veto",
+    "color": "#f87171",
+    "bg": "rgba(48, 16, 18, 0.92)",
+    "x": 1090,
+    "y": 490
+  }
+];
+
+const DATASETS = [
+  {
+    "id": "telco",
+    "name": "Telco Churn (Hasil Nyata)",
+    "target": "Churn",
+    "keyFeature": "tenure",
+    "rows": 7043,
+    "cols": 21,
+    "imbalance": "73.5% vs 26.5%",
+    "summary": "7.043 baris, 21 kolom",
+    "leakWarning": "tenure: AUC 0.735 (Kuat tapi sah)"
+  },
+  {
+    "id": "bank",
+    "name": "Bank Marketing (Deposit)",
+    "target": "Deposit (y)",
+    "keyFeature": "duration",
+    "rows": 45211,
+    "cols": 17,
+    "imbalance": "88.3% vs 11.7%",
+    "summary": "45.211 baris, 17 kolom",
+    "leakWarning": "duration: AUC 0.812 (Waspada kebocoran pasca-kontak!)"
+  }
+];
+
+const STEPS = [
+  // --- BABAK 1-3: FASE 1 - INGESTI & PROBLEM FRAMING ---
+  [
+    0,
+    "Penerimaan Data Awal & Peringatan Class Imbalance",
+    "{summary}",
+    "PERHATIAN SELURUH DEWAN AGEN! Berkas data {name} resmi masuk ke radar penyelidikan: {summary}! Tapi buka mata kalian lebar-lebar: lihat ketimpangan kelas target {target} ini ({imbalance})! Ini bencana besar jika kalian ceroboh! Model pemalas yang cuma menebak mayoritas bisa mengklaim akurasi tinggi tanpa pernah belajar satu pun pola — persis seperti murid nakal pemalas yang mengisi seluruh lembar ujian pilihan ganda dengan opsi C! Saya peringatkan dengan keras: jangan sekali-kali kalian memamerkan metrik akurasi mentah di depan saya, atau saya lempar kalian keluar dari arena!",
+    "Ketika data mengalami class imbalance parah, akurasi konvensional menjadi metrik tipuan yang berbahaya. Model yang selalu menebak kelas negatif (mayoritas) akan terlihat berkinerja tinggi padahal memiliki recall nol terhadap kelas positif. Kita wajib mengevaluasi Area Under the ROC Curve (ROC-AUC) untuk separasi probabilitas dan Precision-Recall AUC (PR-AUC) untuk fokus pada kelas minoritas."
+  ],
+  [
+    0,
+    "Karantina Brankas Tersegel S3a",
+    "20% Data Disegel SHA-256",
+    "STOP! Angkat tangan kalian dari keyboard sekarang juga! Sebelum satu pun baris kode pelatihan dijalankan, 20% data ini resmi saya potong dan KARANTINA TOTAL ke dalam Brankas Tersegel S3a di bawah gembok enkripsi SHA-256! Saya tidak peduli seberapa putus asanya kalian saat tuning model nanti: brankas ini adalah naskah ujian akhir yang disimpan di brankas baja kepala sekolah. Tidak ada yang boleh mengintip, tidak ada yang boleh meraba-raba distribusinya!",
+    "Sealed Holdout adalah benteng terakhir kejujuran machine learning. Sekali data uji tersentuh oleh fitting transformer, pemilihan fitur, atau hyperparameter tuning, seluruh klaim generalisasi gugur seketika akibat optimisasi semu (data snooping / target leakage)."
+  ],
+  [
+    0,
+    "Investigasi Nilai Hilang & Topologi Missingness",
+    "Missing: Imputasi Terisolasi",
+    "Pemeriksaan mikroskopis tuntas! Saya mendeteksi lubang data kosong yang menganga di dalam dataset. Ingat pesan saya: lubang data ini bukan alasan untuk bertindak sembrono! Dilarang keras mengisi nilai kosong memakai rata-rata seluruh tabel populasi! Seluruh imputasi median untuk angka dan modus untuk kategori wajib dikerjakan secara ketat hanya di dalam lipatan latih (fit-in-fold)!",
+    "Imputasi data hilang harus dipelajari murni dari data latih (training fold). Menggunakan statistik global untuk mengisi missing value sama saja dengan mencontek kunci jawaban dari masa depan, menyebabkan estimasi varians menjadi optimistik semu."
+  ],
+  // --- BABAK 4-6: FASE 2 - EXPLORATORY DATA ANALYSIS (EDA) MENDALAM ---
+  [
+    2,
+    "Deteksi Pencilan Ekstrem IQR & Skewness",
+    "Audit Outlier IQR & Skewness",
+    "BUNYIKAN ALARM STATISTIK! Pemindaian rentang interkuartil (IQR) menemukan pencilan ekstrem yang melompat jauh di luar pagar batas 1.5x IQR! Distribusi numerik mengalami kemiringan (skewness) parah! Dengarkan saya: satu angka pencilan triliunan yang lolos bisa menyentak garis regresi dan memutarbalikkan bobot model seperti timbangan pasar yang kejatuhan batu raksasa! Pangkas atau kliping dengan metode robust sekarang!",
+    "Pencilan ekstrem menarik fungsi kerugian kuadratik (MSE/log-loss) secara agresif. Penanganan IQR dan transformasi logaritmik menjaga stabilitas model agar tidak runtuh oleh segelintir data liar yang tidak mewakili populasi umum."
+  ],
+  [
+    3,
+    "Pemindaian Multikolinearitas (VIF & Korelasi Silang)",
+    "Skrining VIF & Korelasi Silang",
+    "Saya sudah membedah seluruh matriks korelasi silang antar-variabel independen! Fitur {keyFeature} terbukti memancarkan sinyal emas paling kuat ke arah target! Namun waspadalah terhadap Variance Inflation Factor (VIF): dua fitur yang saling menduplikasi informasi ibarat dua orang saksi di pengadilan yang menghafal teks yang sama persis: mereka tidak menambah bukti baru, hanya saling berebut koefisien dan membuat standard error meledak tak terkendali!",
+    "Multikolinearitas merusak estimasi bobot model linier. Dua variabel yang berkorelasi sempurna saling mengkanibalisasi sinyal dan membuat kesimpulan signifikansi menjadi tidak stabil, mempersulit interpretasi model secara ilmiah."
+  ],
+  [
+    4,
+    "Adversarial Validation (Uji Kemiripan Train vs Holdout)",
+    "AUC Diskriminator 0.495 (Identik)",
+    "SAYA LUNCURKAN UJI ADVERSARIAL VALIDATION! Saya telah melatih model discriminator khusus yang bertugas mati-matian membedakan mana baris Data Latih dan mana baris Data Brankas Holdout! Hasilnya sangat mengejutkan: skor ROC-AUC discriminator hanya 0.495 — persis setara dengan tebakan lempar koin acak! Ini adalah kemenangan besar metodologi kita: Data Latih dan Data Holdout terbukti kembar identik, bebas dari pergeseran domain (covariate shift) maupun bias temporal!",
+    "Adversarial Validation membuktikan bahwa partisi data tidak mengalami kebocoran distribusi. AUC discriminator mendekati 0.50 memastikan model tidak akan menderita domain drift saat dievaluasi pada data holdout."
+  ],
+  // --- BABAK 7-9: FASE 3 - LEAKAGE DEFENSE & SKEPTIC VETO ---
+  [
+    0,
+    "Pemindaian Sinyal Palsu L1-L9",
+    "{leakWarning}",
+    "TAHAN PERMAINAN! Pindai kebocoran L1-L9: kami selidiki fitur prediktif terkuat {keyFeature}! Apakah ini informasi masa depan yang tidak sah? Kami telusuri jejak temporalnya: nilai fitur ini terbukti sah karena sudah tercatat secara prospektif sebelum nasabah memutuskan target! Memasukkan fitur bocoran sama seperti meramal apakah seseorang akan kehujanan dengan melihat bajunya sedang diperas!",
+    "Target Leakage adalah jebakan paling mematikan dalam ML. Fitur yang mengintip informasi masa depan menghasilkan akurasi 99% di laboratorium, namun gagal total saat diterjunkan ke produksi nyata karena fitur tersebut tidak tersedia saat inferensi prospektif."
+  ],
+  [
+    5,
+    "Veto Keras Skeptic (Anti-Contekan)",
+    "VETO SIAGA: Syarat Kanari Aktif",
+    "TIDAK ADA NEGOSIASI! TIDAK ADA AIR MATA! Hak veto saya tetap siaga penuh: model mana pun dengan klaim skor tinggi wajib membuktikan diri di uji kanari derau nanti! Saya lebih memilih model kita meraih skor 70 yang jujur dan tahan banting daripada skor 99 semu hasil contekan busuk! Siapa pun yang berani melanggar protokol ilmiah akan saya libas dengan hak veto saya!",
+    "Hak Veto Skeptic adalah pengaman integritas ilmiah. Menghapus fitur bocoran mungkin menurunkan metrik di layar monitor, namun menyelamatkan perusahaan dari kerugian operasional fatal di lapangan."
+  ],
+  [
+    0,
+    "Isolasi Penuh Preprocessing Fit-in-Fold",
+    "Fit Hanya di Train Fold",
+    "Dinding api (firewall) resmi didirikan! Seluruh proses standardisasi, enkoding, dan penambalan sel kosong sekarang diikat mati di dalam Pipeline scikit-learn. Aturan besi: transformer HANYA boleh memanggil metode .fit() pada fold latihan! Data validasi diharamkan memberikan informasi mean maupun variansnya! Jika ada rembesan satu tetes saja dari validation set, seluruh fold dibatalkan!",
+    "Fit-in-Fold mencegah data leakage pada tahap preprocessing. Parameter penskalaan dan enkoding harus dihitung independen pada tiap split pelatihan tanpa mengintip split validasi, menjamin evaluasi bebas bias kontaminasi."
+  ],
+  // --- BABAK 10-14: FASE 4 - FEATURE ENGINEERING & NLP ---
+  [
+    3,
+    "Transformasi Numerik & Enkoding Kategori",
+    "StandardScaler + One-Hot Pipeline",
+    "Pondasi higienis telah berdiri kokoh! Sekarang lihat transformasi yang saya racik: seluruh fitur angka telah dinormalisasi menggunakan StandardScaler sehingga fitur bernilai jutaan tidak menindas fitur bernilai satuan! Sementara itu, fitur kategori dipetakan melalui One-Hot Encoding dengan parameter handle_unknown=\'ignore\' yang kebal terhadap kategori kejutan di masa depan! Matriks fitur kini bersih, adil, dan siap disantap model!",
+    "Standardisasi menyetarakan kontribusi setiap variabel dalam penghitungan jarak euclidian dan pembaruan bobot gradien, mencegah algoritma bias terhadap variabel berskala numerik besar."
+  ],
+  [
+    3,
+    "Rekayasa Fitur Interaksi Domain & Rasio",
+    "Rasio Domain & Polinomial Orde-2",
+    "Jangan biarkan model meraba-raba dalam kegelapan! Saya suntikkan intuisi domain bisnis ke dalam matriks data: rasio aktivitas terhadap saldo, interaksi non-linier antara durasi dan kontak, serta fitur polinomial orde-2! Dua variabel yang terlihat lemah jika berdiri sendiri kini bersinergi menciptakan sinyal prediktif yang menusuk tajam ke arah target!",
+    "Fitur interaksi domain mengekspresikan dinamika bisnis secara eksplisit, memungkinkan algoritma menangkap hubungan non-linier tanpa harus meningkatkan kompleksitas model secara berlebihan."
+  ],
+  [
+    3,
+    "NLP Korpus Teks & Pembersihan Token",
+    "Pembersihan Korpus & Tokenisasi",
+    "SAATNYA MEMBANGUNKAN CABANG NLP! Data teks pada korpus narasi kini kita bedah tuntas! Kami bersihkan derau tanda baca, normalisasi huruf kecil, singkirkan stopword yang tidak bermakna, dan lakukan tokenisasi kata unik! Hasilnya luar biasa: kosakata aktif yang higienis siap diekstraksi untuk membedakan nasabah berisiko dari nasabah loyal!",
+    "Pembersihan teks dan stopword removal menyaring derau linguistik, menyisakan token-token bermakna yang membawa bobot informasi semantik tertinggi untuk pemodelan prediktif multimodal."
+  ],
+  [
+    1,
+    "Vektorisasi TF-IDF & Pembobotan N-Gram",
+    "Matriks TF-IDF Unigram + Bigram",
+    "Vektorisasi TF-IDF (Term Frequency-Inverse Document Frequency) unigram dan bigram resmi beroperasi! Kata-kata umum yang muncul di mana-mana langsung ditekan bobotnya, sedangkan frasa-frasa kunci pembeda diberikan bobot tinggi dalam matriks sparse berdimensi tinggi! Kombinasi bigram menangkap konteks frasa dua kata secara utuh, mencegah salah tafsir kata negasi seperti \'tidak puas\' menjadi sekadar kata \'puas\'!",
+    "TF-IDF memprioritaskan kata-kata yang informatif dan khas pada segmen target tertentu seraya mengabaikan kata-kata pasaran, menghasilkan representasi teks yang kaya daya diskriminasi."
+  ],
+  [
+    3,
+    "Polarisasi Sentimen & Rapatan Semantik",
+    "Penyatuan Multimodal Tabular + NLP",
+    "MAHAKARYA MULTIMODAL TERCIPTA! Kami satukan polaritas sentimen positif-negatif dan rapatan semantik teks berdampingan langsung dengan tabel numerik dan kategori! Ini bukan sekadar data tabular biasa, ini adalah arsitektur data komprehensif 360 derajat yang melihat angka transaksi sekaligus denyut emosi nasabah dalam satu kesatuan matriks input siap tanding!",
+    "Penggabungan fitur tabular terstruktur dan representasi NLP tak terstruktur (multimodal feature fusion) memperkaya ruang fitur dan memperluas cakrawala prediktif algoritma."
+  ],
+  // --- BABAK 15-18: FASE 5 - TURNAMEN MODEL ML & BOOSTING ---
+  [
+    1,
+    "Peluncuran Patokan Dasar Baseline Linier",
+    "Dummy Classifier vs Logistic L2",
+    "GONG PERTANDINGAN DITABUH! Petarung pertama melangkah ke tengah arena: Dummy Classifier sebagai garis dasar acak, dan sang legenda klasik Logistic Regression dengan regularisasi penalti L2! Model linier ini cepat, elegan, transparan, dan membutuhkan waktu latih kurang dari sekejap mata! Model rumit mana pun yang ingin dinobatkan sebagai juara WAJIB membuktikan bahwa ia mampu mengalahkan garis patokan dasar ini!",
+    "Baseline model adalah standar ilmiah wajib sebelum mencoba algoritma kompleks. Jika model linier sederhana sudah memenuhi target performa, komputasi berat model hitam (black-box) tidak lagi dapat dijustifikasi."
+  ],
+  [
+    2,
+    "Evaluasi Rapor Baseline Linier",
+    "Baseline CV AUC 0.846 | PR 0.661",
+    "RAPOR PERDANA KELUAR! Sang Jagoan Garis Lurus mencatatkan skor awal CV AUC 0.846 dan PR-AUC 0.661! Luar biasa efisien untuk model yang hanya memetakan satu bidang datar! Namun perhatikan: batas keputusan linier mulai menunjukkan kelelahan saat menghadapi perpotongan fitur non-linier bertingkat. Ini adalah celah bagi model ansambel untuk unjuk gigi!",
+    "Model linier memberikan estimasi performa awal yang cepat dan stabil. Kegagalan batas linier dalam menangkap batas keputusan melengkung menjadi alasan kuat untuk mengeksplorasi pohon keputusan."
+  ],
+  [
+    1,
+    "Pengerahan Pasukan Pohon Random Forest",
+    "Random Forest (100 Pohon Keputusan)",
+    "KERAHKAN PASUKAN HUTAN KEPUTUSAN! Pasukan Random Forest Classifier diterjunkan ke arena: ansambel 100 pohon keputusan independen yang masing-masing belajar dari subset baris dan fitur acak! Setiap pohon memberikan suaranya secara demokratis untuk memetakan batas keputusan yang berliku-liku tanpa takut goyah!",
+    "Random Forest mereduksi varians melalui teknik bagging dan pengacakan fitur. Konsensus mayoritas dari puluhan pohon acak menghasilkan batas keputusan non-linier yang jauh lebih stabil daripada satu pohon tunggal."
+  ],
+  [
+    1,
+    "Akselerasi Pohon Petir Gradient Boosting / LightGBM",
+    "LightGBM Residual Boosting",
+    "INILAH SANG PREDATOR PUNCAK: GRADIENT BOOSTING / LIGHTGBM! Berbeda dari hutan acak, pohon petir ini belajar secara sekuensial dan berfokus penuh memperbaiki sisa kesalahan (residual error) dari pohon-pohon sebelumnya putaran demi putaran! Dengan learning rate terkontrol, performa melonjak ke batas presisi tajam! Kita telah menemukan monster akurasi!",
+    "Gradient Boosting mengoptimalkan fungsi kerugian melalui penurunan gradien bertahap (gradient descent in function space), memfokuskan kekuatan pohon baru pada contoh-contoh data yang paling sulit diprediksi."
+  ],
+  // --- BABAK 19-21: FASE 6 - STATISTICAL VALIDATION & RESAMPLING ---
+  [
+    2,
+    "Validasi Silang Berulang Repeated Stratified CV",
+    "5-Fold CV x 3 Repeats (15 Putaran)",
+    "TIDAK ADA KEMENANGAN DARI SATU KALI SPLIT KEBERUNTUNGAN! Kami gelar Repeated Stratified 5-Fold CV x 3 Repeats (15 putaran penuh): diuji berkali-kali pada partisi acak berbeda! Hasil konsistensi: skor membuktikan bahwa kestabilan model bukan kebetulan undian nasib, melainkan hasil pembelajaran pola yang kokoh lintas subset data!",
+    "Repeated Stratified CV mengukur kestabilan estimasi performa. Rata-rata skor dari berbagai partisi acak melindungi kesimpulan ilmiah dari bias pemilihan split tunggal."
+  ],
+  [
+    2,
+    "Uji Signifikansi Nadeau-Bengio & Margin Praktis delta",
+    "Nadeau-Bengio: p=0.41 (Tidak Signifikan)",
+    "DENGARKAN KEPUTUSAN WASIT! Uji t-test standar biasa adalah ILUSI PALSU karena mengabaikan korelasi tumpang-tindih antar lipatan validasi! Saya terapkan Nadeau-Bengio Corrected Resampled t-Test secara ketat! Hasil perhitungan: Random Forest p=0.41 dan LightGBM p=0.90 terhadap baseline linier. Selisih AUC di bawah 0.004 TIDAK SIGNIFIKAN! Secara statistik selisih sekecil itu adalah derau acak belaka. Prinsip Occam\'s Razor: pilih model paling sederhana!",
+    "Uji Nadeau-Bengio mengoreksi pelanggaran independensi pada cross-validation. Nilai p > 0.05 membuktikan keunggulan tipis model kompleks hanyalah derau acak, mewajibkan kita memilih model linier sederhana berdasarkan Occam\'s Razor."
+  ],
+  [
+    2,
+    "Kalibrasi Probabilitas & Brier Score",
+    "Brier Score 0.135 (Kalibrasi Jujur)",
+    "MODEL YANG BAIK BUKAN HANYA TEPAT, TAPI WAJIB JUJUR! Kami membedah kalibrasi probabilitas menggunakan Brier Score! Hasil pengukuran: Brier Score model mencapai angka prima 0.135 (jauh lebih baik dari tebakan prevalensi 0.195)! Model machine learning ini ibarat dokter spesialis bedah yang jujur: ketika ia mengeluarkan angka peluang risiko 80%, di dunia nyata 8 dari 10 pasien memang terbukti berisiko! Tidak ada kepongahan probabilitas!",
+    "Brier Score mengukur mean squared error antara probabilitas prediksi dan label aktual. Skor yang rendah menjamin bahwa estimasi probabilitas model dapat dipercaya sebagai ukuran risiko di dunia nyata."
+  ],
+  // --- BABAK 22-24: FASE 7 - ROBUSTNESS, CANARY & XAI ---
+  [
+    5,
+    "Ujian Jebakan Acak Kanari Permutasi",
+    "JEBAKAN KANARI: Label Diacak 100%",
+    "JANGAN BERANI-BERANI TERSENYUM DULU! Sekarang giliran saya yang menguji! Bagaimana kalau model kebanggaan kalian ini sebenarnya hanya tukang hafal ulung yang menghafal kebisingan data? SAYA LEPAS BURUNG KANARI KE DALAM ARENA: seluruh kunci jawaban target saya ACAK TOTAL 100% menggunakan permutasi ngawur! Tunjukkan pada saya: apakah model kalian masih sok pintar mengklaim skor tinggi pada data yang sudah kehilangan seluruh maknanya?!",
+    "Permutation Canary Test menguji apakah model bergantung pada kebocoran laten. Jika label diacak total namun model masih mencetak skor tinggi, terbukti arsitektur mengalami kebocoran target tersembunyi."
+  ],
+  [
+    4,
+    "Lolos Ujian Kanari Bebas Hafalan",
+    "KANARI LOLOS: AUC Anjlok ke 0.504",
+    "BURUNG KANARI SELAMAT! DI DATA JEBAKAN ACAK, SKOR MODEL LANGSUNG AMBLAS KE AUC 0.504 — PERSIS SETARA LEMPARAN KOIN 50:50! Ini adalah bukti paling tak terbantahkan dalam sains: model kita TIDAK MENGHAFAL DERAU! Saat diberi data omong kosong tanpa pola, model dengan jujur menyatakan tidak tahu! Veto Skeptic resmi dipatahkan oleh kejujuran logika model!",
+    "Penurunan skor ke tingkat tebakan acak (AUC 0.50) pada uji permutasi adalah bukti definitif bahwa performa tinggi sebelumnya murni berasal dari sinyal data yang sah, bukan artefak kebocoran."
+  ],
+  [
+    4,
+    "Uji Ketahanan Derau & Stabilitas 5 Seed",
+    "Derau 5%: AUC 0.844 | Stabilitas 99.96%",
+    "BELUM SELESAI! Kami suntikkan derau sintetis Gaussian 5% ke seluruh fitur dan uji stabilitasnya di 5 benih keacakan berbeda! Hasil ketahanan membakar dada: retensi performa bertahan di 99.96%! Variasi 5 acakan seed menjaga AUC stabil di 0.845-0.846! Guncangan data kotor di lapangan tidak sanggup meruntuhkan batas keputusannya! Model ini adalah BAJA TEMPAAN YANG TAHAN BANTING!",
+    "Uji Multi-Seed dan injeksi derau membuktikan ketahanan model terhadap fluktuasi data masukan di lingkungan produksi (robustness under noise perturbation)."
+  ],
+  // --- BABAK 25-28: FASE 8 - XAI, SEALED HOLDOUT & KONSENSUS JUARA ---
+  [
+    1,
+    "Buka Isi Kepala AI Atribusi Nilai SHAP",
+    "tenure Paling Dominan (Delta AUC 0.169)",
+    "KITA BONGKAR KOTAK HITAM INI SAMPAI KE AKAR-AKARNYA! Menggunakan Explainable AI (SHAP / Shapley Additive Explanations) dan Permutation Importance, kami buka isi kepala model secara transparan ke publik! Pengacakan fitur utama di holdout memangkas AUC sebesar 0.169! Tidak ada sihir, tidak ada mistis: setiap keputusan prediksi dapat dijelaskan secara runut dan dapat diaudit di depan dewan komisaris maupun regulator hukum!",
+    "SHAP menguraikan kontribusi marjinal setiap fitur terhadap prediksi individu berdasarkan teori permainan kooperatif, menghapus stigma black-box pada model ansambel kompleks."
+  ],
+  [
+    0,
+    "Audit Kesalahan & Kasus Sulit",
+    "Irisan Sampel Kritis: Kontrak Panjang",
+    "Saya lakukan otopsi mendalam pada baris-baris data di mana model membuat kekeliruan (False Positive & False Negative)! Kami temukan pola kasus sulit pada segmen nasabah kontrak panjang. Namun yang paling melegakan: pola kesalahan terdistribusi merata tanpa bias diskriminasi ras atau kelompok rentan! Kami rekomendasikan ambang batas keputusan adaptif (threshold tuning) per segmen risiko!",
+    "Analisis residual dan hard samples mengidentifikasi titik buta (blind spots) operasional, memungkinkan rekayasa ambang batas keputusan (decision threshold tuning) sebelum deploy."
+  ],
+  [
+    5,
+    "Pembukaan Brankas Tersegel One-Shot",
+    "BRANKAS TERBUKA: Holdout AUC 0.842",
+    "GEMBOK HASH SHA-256 RESMI SAYA PUTAR! PINTU BRANKAS TERSEGEL DIBUKA SATU KALI SAJA TANPA KESEMPATAN REMEDIAL! 20% data rahasia yang belum pernah disentuh sejak awal turnamen kini diuji ke model! Skor Holdout AUC 0.842 vs CV 0.846, dengan generalization gap HANYA 0.004! Model ini membuktikan kejeniusannya di atas naskah ujian asli dunia nyata! Dengan ini, SAYA CABUT HAK VETO SAYA SECARA RESMI!",
+    "Generalization Gap yang sangat tipis (< 0.05) antara CV dan Holdout mengonfirmasi bahwa model memiliki daya generalisasi sejati dan siap beroperasi di dunia nyata."
+  ],
+  [
+    0,
+    "KONSENSUS PENUH 100% & MAHKOTA JUARA",
+    "JUARA: Logistic Regression L2",
+    "KONSENSUS MUTLAK 100% RESMI TERCAPAI! Ketiga model terbukti sama kuat, sehingga seluruh 6 Agen AI secara bulat memahkotai model paling sederhana, efisien, dan transparan: Logistic Regression L2! Pipeline data higienis, bebas bocoran contekan, teruji kanari, terkalibrasi jujur, transparan di bawah SHAP, dan mengantongi segel emas Brankas Holdout! KITA MENANG BERSAMA SAINS!",
+    "Semua 6 agen sepakat 100%: pipeline terbukti jujur, tahan banting, dan siap dideploy ke produksi industri berdasarkan prinsip Occam\'s Razor!"
+  ]
+];
+const PHASE_NAMES = [
+  "INGESTI",
+  "EDA",
+  "LEAKAGE",
+  "FITUR+NLP",
+  "TURNAMEN",
+  "VALIDASI",
+  "KETAHANAN",
+  "KONSENSUS"
+];
+
+const PHASE_STARTS = [
+  1,
+  4,
+  7,
+  10,
+  15,
+  19,
+  22,
+  26
+];
+
+const NOTEBOOK_CODE = "import pandas as pd, numpy as np\nfrom sklearn.model_selection import RepeatedStratifiedKFold, train_test_split, cross_val_score\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.compose import ColumnTransformer\nfrom sklearn.preprocessing import StandardScaler, OneHotEncoder\nfrom sklearn.impute import SimpleImputer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.ensemble import RandomForestClassifier\nfrom lightgbm import LGBMClassifier\nfrom scipy import stats\n\n# 1. LOAD DATA & TRAIN-HOLDOUT PARTITION (20% SEALED)\ndf = pd.read_csv(\"data.csv\")\ny = df.pop(\"target\")\nX_train, X_hold, y_train, y_hold = train_test_split(df, y, test_size=0.2, stratify=y, random_state=42)\n\n# 2. COLUMN PREPROCESSING (FIT ONLY IN FOLD)\nnum_cols = X_train.select_dtypes(\"number\").columns\ncat_cols = X_train.select_dtypes(\"object\").columns\n\npreprocessor = ColumnTransformer([\n    (\"num\", Pipeline([(\"imp\", SimpleImputer(strategy=\"median\")), (\"scaler\", StandardScaler())]), num_cols),\n    (\"cat\", OneHotEncoder(handle_unknown=\"ignore\"), cat_cols)\n])\n\n# 3. REPEATED STRATIFIED 5-FOLD CV\ncv = RepeatedStratifiedKFold(n_splits=5, n_repeats=3, random_state=42)\n\ndef evaluate(model):\n    pipe = Pipeline([(\"pre\", preprocessor), (\"clf\", model)])\n    return cross_val_score(pipe, X_train, y_train, cv=cv, scoring=\"roc_auc\")\n\nscores_lr = evaluate(LogisticRegression(max_iter=1000, random_state=42))\nscores_rf = evaluate(RandomForestClassifier(n_estimators=100, random_state=42))\nscores_lgbm = evaluate(LGBMClassifier(n_estimators=300, random_state=42, verbose=-1))\n\n# 4. NADEAU-BENGIO CORRECTED RESAMPLED T-TEST\ndiff = scores_lgbm - scores_lr\nn = len(diff)\nn_train, n_test = 4, 1  # 5-fold: 80% train, 20% test\ncorrected_var = diff.var(ddof=1) * (1/n + n_test/n_train)\nt_stat = diff.mean() / np.sqrt(corrected_var)\np_val = 2 * stats.t.sf(abs(t_stat), df=n - 1)\n\nprint(f\"Logistic Regression AUC: {scores_lr.mean():.4f}\")\nprint(f\"LightGBM AUC:           {scores_lgbm.mean():.4f}\")\nprint(f\"Delta:                  {diff.mean():.4f}\")\nprint(f\"Nadeau-Bengio p-value:  {p_val:.4f}\")\n\n# 5. OCCAM'S RAZOR WINNER SELECTION & SEALED HOLDOUT REVEAL\nchampion = Pipeline([(\"pre\", preprocessor), (\"clf\", LogisticRegression(max_iter=1000, random_state=42))])\nchampion.fit(X_train, y_train)\nfrom sklearn.metrics import roc_auc_score\nholdout_auc = roc_auc_score(y_hold, champion.predict_proba(X_hold)[:, 1])\nprint(f\"Sealed Holdout AUC:     {holdout_auc:.4f} (Gap: {abs(scores_lr.mean() - holdout_auc):.4f})\")\n";
+
+// =============================================================================
+// AVATAR VECTOR ILLUSTRATIONS (6 AGENTS)
+// =============================================================================
+function AvatarSvg({ agentIdx, color }) {
+  if (agentIdx === 0) {
+    return (
+      <svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+        <ellipse cx="32" cy="60" rx="22" ry="13" fill={color} />
+        <circle cx="32" cy="36" r="13" fill="#f3d2b3" />
+        <path d="M20 28 Q32 6 44 28Z" fill="#0f172a" />
+        <rect x="13" y="27" width="38" height="4" rx="2" fill="#0f172a" />
+        <rect x="20" y="22" width="24" height="3" fill={color} />
+        <circle cx="27" cy="37" r="2" fill="#0f172a" />
+        <circle cx="37" cy="37" r="2" fill="#0f172a" />
+        <path d="M28 44 Q32 46 36 44" stroke="#7c4a2d" strokeWidth="1.6" fill="none" />
+        <circle cx="47" cy="46" r="7" fill="rgba(45,212,191,.35)" stroke="#e2e8f0" strokeWidth="2.5" />
+        <line x1="52" y1="51" x2="58" y2="58" stroke="#e2e8f0" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+    );
+  } else if (agentIdx === 1) {
+    return (
+      <svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+        <ellipse cx="32" cy="60" rx="22" ry="13" fill={color} />
+        <circle cx="32" cy="38" r="13" fill="#e8c39e" />
+        <path d="M17 31 Q32 4 47 31Z" fill={color} />
+        <rect x="13" y="29" width="38" height="5" rx="2" fill="#fde68a" />
+        <rect x="29" y="10" width="6" height="16" rx="2" fill="#fde68a" />
+        <circle cx="26" cy="39" r="5" fill="#0f172a" stroke={color} strokeWidth="2" />
+        <circle cx="38" cy="39" r="5" fill="#0f172a" stroke={color} strokeWidth="2" />
+        <rect x="30" y="38" width="4" height="2" fill={color} />
+        <path d="M28 47 Q32 50 36 47" stroke="#7c4a2d" strokeWidth="1.6" fill="none" />
+        <path d="M50 58 L54 42 L58 58" stroke="#e2e8f0" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      </svg>
+    );
+  } else if (agentIdx === 2) {
+    return (
+      <svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+        <ellipse cx="32" cy="60" rx="22" ry="13" fill={color} />
+        <path d="M20 46 Q32 66 44 46Z" fill="#e2e8f0" />
+        <circle cx="32" cy="38" r="12" fill="#f1d9c0" />
+        <path d="M17 30 L32 1 L47 30Z" fill="#6b21a8" />
+        <ellipse cx="32" cy="30" rx="20" ry="4" fill="#7e22ce" />
+        <path d="M24 26 Q32 8 40 26" stroke="#fde68a" strokeWidth="2" fill="none" />
+        <circle cx="26" cy="38" r="2" fill="#0f172a" />
+        <circle cx="38" cy="38" r="5" fill="rgba(253,230,138,.25)" stroke="#fde68a" strokeWidth="2" />
+        <circle cx="38" cy="38" r="1.8" fill="#0f172a" />
+        <path d="M43 41 L48 52" stroke="#fde68a" strokeWidth="1.5" />
+      </svg>
+    );
+  } else if (agentIdx === 3) {
+    return (
+      <svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+        <circle cx="15" cy="18" r="8" fill="#be185d" />
+        <circle cx="49" cy="18" r="8" fill="#be185d" />
+        <ellipse cx="32" cy="60" rx="22" ry="13" fill={color} />
+        <circle cx="32" cy="32" r="17" fill="#be185d" />
+        <circle cx="32" cy="37" r="13" fill="#f3d2b3" />
+        <circle cx="26" cy="37" r="3" fill="#0f172a" />
+        <circle cx="38" cy="37" r="3" fill="#0f172a" />
+        <circle cx="27" cy="36" r="1" fill="#fff" />
+        <circle cx="39" cy="36" r="1" fill="#fff" />
+        <path d="M28 44 Q32 48 36 44" stroke="#9d174d" strokeWidth="1.8" fill="none" />
+        <path d="M49 40 h6 v7 l5 11 h-16 l5 -11z" fill="#fce7f3" stroke="#f9a8d4" strokeWidth="1.5" />
+        <circle cx="52" cy="52" r="2" fill="#f472b6" />
+      </svg>
+    );
+  } else if (agentIdx === 4) {
+    return (
+      <svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+        <path d="M32 66 Q8 58 11 46 L53 46 Q56 58 32 66Z" fill={color} />
+        <line x1="32" y1="18" x2="32" y2="8" stroke={color} strokeWidth="2.5" />
+        <circle cx="32" cy="7" r="3.5" fill="#fde68a" />
+        <rect x="15" y="18" width="34" height="29" rx="11" fill="#1e3a5f" stroke={color} strokeWidth="2" />
+        <rect x="19" y="28" width="26" height="10" rx="5" fill="#0ea5e9" />
+        <circle cx="27" cy="33" r="2.2" fill="#e0f2fe" />
+        <circle cx="37" cy="33" r="2.2" fill="#e0f2fe" />
+        <path d="M27 42 h10" stroke="#7dd3fc" strokeWidth="2" strokeLinecap="round" />
+        <path d="M46 46 h13 v8 q0 7 -6.5 9 q-6.5 -2 -6.5 -9z" fill="#0f172a" stroke="#e0f2fe" strokeWidth="2" />
+        <path d="M49 53 l3 3 l5 -6" stroke="#4ade80" strokeWidth="2" fill="none" />
+      </svg>
+    );
+  } else {
+    return (
+      <svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+        <path d="M18 20 L11 3 L27 14Z" fill="#fecaca" />
+        <path d="M46 20 L53 3 L37 14Z" fill="#fecaca" />
+        <path d="M13 64 Q8 14 32 12 Q56 14 51 64Z" fill="#7f1d1d" />
+        <ellipse cx="32" cy="37" rx="12" ry="14" fill="#f3d2b3" />
+        <path d="M23 35 h8" stroke="#0f172a" strokeWidth="3" strokeLinecap="round" />
+        <circle cx="39" cy="35" r="2.2" fill="#0f172a" />
+        <path d="M34 29 L44 25" stroke="#0f172a" strokeWidth="2.6" strokeLinecap="round" />
+        <path d="M26 46 h12" stroke="#7f1d1d" strokeWidth="2" strokeLinecap="round" />
+        <circle cx="50" cy="52" r="9" fill="#0f172a" stroke={color} strokeWidth="2" />
+        <path d="M46 48 l8 8 M54 48 l-8 8" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+}
+
+// =============================================================================
+// CENTER STAGE 8 PHASES VECTOR GRAPHICS
+// =============================================================================
+function CenterPhaseSvg({ phaseIdx, step }) {
+  if (phaseIdx === 0) {
+    return (
+      <svg viewBox="0 0 280 170" width="280" height="170" aria-hidden="true">
+        <text x="10" y="16" fill="#2dd4bf" fontSize="10" fontWeight="700">KELAS TIMPANG + BRANKAS TERSEGEL</text>
+        <rect x="24" y="40" width="44" height="100" fill="#2dd4bf" />
+        <rect x="84" y="124" width="44" height="16" fill="#f87171" />
+        <text x="22" y="156" fill="#94a3b8" fontSize="9">Mayoritas</text>
+        <text x="82" y="156" fill="#94a3b8" fontSize="9">Minoritas</text>
+        <path d="M188 84 v-14 a18 18 0 0 1 36 0 v14" fill="none" stroke="#2dd4bf" strokeWidth="5" />
+        <rect x="176" y="84" width="60" height="46" rx="8" fill="#0d2a2e" stroke="#2dd4bf" strokeWidth="2" />
+        <circle cx="206" cy="103" r="5" fill="#2dd4bf" />
+        <rect x="204" y="106" width="4" height="12" fill="#2dd4bf" />
+        <text x="176" y="148" fill="#94a3b8" fontSize="9">20% disegel SHA-256</text>
+      </svg>
+    );
+  } else if (phaseIdx === 1) {
+    return (
+      <svg viewBox="0 0 280 170" width="280" height="170" aria-hidden="true">
+        <text x="10" y="16" fill="#c084fc" fontSize="10" fontWeight="700">SEBARAN, PENCILAN IQR, KORELASI</text>
+        <g fill="#c084fc">
+          <rect x="20" y="50" width="20" height="90" /><rect x="44" y="70" width="20" height="70" />
+          <rect x="68" y="90" width="20" height="50" /><rect x="92" y="106" width="20" height="34" />
+          <rect x="116" y="118" width="20" height="22" /><rect x="140" y="126" width="20" height="14" />
+          <rect x="164" y="132" width="20" height="8" />
+        </g>
+        <circle cx="250" cy="134" r="6" fill="#f87171" />
+        <circle cx="250" cy="134" r="11" fill="none" stroke="#f87171" strokeDasharray="3 3" />
+        <text x="214" y="118" fill="#fca5a5" fontSize="9">Pencilan IQR</text>
+        <rect x="40" y="150" width="70" height="12" fill="none" stroke="#e9d5ff" strokeWidth="1.5" />
+        <line x1="62" y1="150" x2="62" y2="162" stroke="#e9d5ff" strokeWidth="2" />
+        <line x1="20" y1="156" x2="40" y2="156" stroke="#e9d5ff" />
+        <line x1="110" y1="156" x2="190" y2="156" stroke="#e9d5ff" />
+      </svg>
+    );
+  } else if (phaseIdx === 2) {
+    return (
+      <svg viewBox="0 0 280 170" width="280" height="170" aria-hidden="true">
+        <text x="10" y="16" fill="#f87171" fontSize="10" fontWeight="700">FITUR JUJUR VS FITUR BOCOR (L1-L9)</text>
+        <line x1="30" y1="145" x2="260" y2="145" stroke="#475569" />
+        <line x1="30" y1="145" x2="30" y2="26" stroke="#475569" />
+        <g fill="#2dd4bf" opacity=".85">
+          <circle cx="60" cy="120" r="4" /><circle cx="90" cy="90" r="4" /><circle cx="80" cy="128" r="4" />
+          <circle cx="120" cy="104" r="4" /><circle cx="150" cy="70" r="4" /><circle cx="130" cy="128" r="4" />
+          <circle cx="170" cy="110" r="4" /><circle cx="110" cy="60" r="4" />
+        </g>
+        <line x1="40" y1="140" x2="255" y2="34" stroke="#f87171" strokeWidth="2.5" strokeDasharray="6 4" />
+        <g fill="#f87171"><circle cx="110" cy="106" r="4" /><circle cx="160" cy="81" r="4" /><circle cx="210" cy="57" r="4" /></g>
+        <text x="176" y="92" fill="#fca5a5" fontSize="10" fontWeight="700">BOCOR</text>
+        <path d="M236 118 l16 16 m0 -16 l-16 16" stroke="#f87171" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+    );
+  } else if (phaseIdx === 3) {
+    return (
+      <svg viewBox="0 0 280 170" width="280" height="170" aria-hidden="true">
+        <text x="10" y="16" fill="#f472b6" fontSize="10" fontWeight="700">TOKEN MENJADI BOBOT TF-IDF</text>
+        <g fill="rgba(244,114,182,.18)" stroke="#f472b6">
+          <rect x="14" y="30" width="58" height="24" rx="12" /><rect x="76" y="30" width="58" height="24" rx="12" />
+          <rect x="138" y="30" width="58" height="24" rx="12" /><rect x="200" y="30" width="66" height="24" rx="12" />
+        </g>
+        <g fill="#fce7f3" fontSize="10" textAnchor="middle">
+          <text x="43" y="46">promo</text><text x="105" y="46">gratis</text><text x="167" y="46">batal</text><text x="233" y="46">puas</text>
+        </g>
+        <g stroke="#f472b6" strokeDasharray="2 3"><line x1="43" y1="56" x2="43" y2="60" /><line x1="105" y1="56" x2="105" y2="60" /></g>
+        <rect x="28" y="66" width="30" height="74" fill="#f472b6" />
+        <rect x="90" y="100" width="30" height="40" fill="#f472b6" opacity=".7" />
+        <rect x="152" y="60" width="30" height="80" fill="#f472b6" />
+        <rect x="218" y="90" width="30" height="50" fill="#f472b6" opacity=".7" />
+        <text x="14" y="158" fill="#94a3b8" fontSize="9">Tinggi batang = bobot representasi kata khas</text>
+      </svg>
+    );
+  } else if (phaseIdx === 4) {
+    const o1 = step >= 16 ? 1 : 0.2;
+    const o2 = step >= 17 ? 1 : 0.2;
+    const o3 = step >= 18 ? 1 : 0.2;
+    return (
+      <svg viewBox="0 0 280 170" width="280" height="170" aria-hidden="true">
+        <text x="10" y="16" fill="#facc15" fontSize="10" fontWeight="700">KURVA ROC TURNAMEN MODEL</text>
+        <rect x="30" y="24" width="230" height="116" fill="none" stroke="#334155" />
+        <line x1="30" y1="140" x2="260" y2="24" stroke="#64748b" strokeDasharray="4 4" />
+        <path d="M30 140 C70 95 150 62 260 36" fill="none" stroke="#c084fc" strokeWidth="3" opacity={o1} />
+        <path d="M30 140 C55 80 120 50 260 30" fill="none" stroke="#38bdf8" strokeWidth="3" opacity={o2} />
+        <path d="M30 140 C45 70 95 40 260 26" fill="none" stroke="#facc15" strokeWidth="3" opacity={o3} />
+        <g fontSize="9">
+          <text x="34" y="158" fill="#c084fc">Logistic L2</text>
+          <text x="110" y="158" fill="#38bdf8">Random Forest</text>
+          <text x="200" y="158" fill="#facc15">LightGBM</text>
+        </g>
+      </svg>
+    );
+  } else if (phaseIdx === 5) {
+    return (
+      <svg viewBox="0 0 280 170" width="280" height="170" aria-hidden="true">
+        <text x="10" y="16" fill="#c084fc" fontSize="10" fontWeight="700">KALIBRASI: KEYAKINAN VS KENYATAAN</text>
+        <rect x="30" y="24" width="150" height="116" fill="none" stroke="#334155" />
+        <line x1="30" y1="140" x2="180" y2="24" stroke="#64748b" strokeDasharray="4 4" />
+        <path d="M30 138 C70 112 120 70 180 28" fill="none" stroke="#facc15" strokeWidth="3" />
+        <g fill="#c084fc">
+          <circle cx="58" cy="114" r="4" /><circle cx="90" cy="96" r="4" /><circle cx="120" cy="70" r="4" /><circle cx="152" cy="46" r="4" />
+        </g>
+        <text x="198" y="60" fill="#e9d5ff" fontSize="11" fontWeight="700">Brier Score</text>
+        <text x="198" y="92" fill="#facc15" fontSize="26" fontWeight="800">0.135</text>
+        <text x="198" y="112" fill="#94a3b8" fontSize="9">Makin kecil makin jujur</text>
+      </svg>
+    );
+  } else if (phaseIdx === 6) {
+    return (
+      <svg viewBox="0 0 280 170" width="280" height="170" aria-hidden="true">
+        <text x="10" y="16" fill="#38bdf8" fontSize="10" fontWeight="700">UJI KANARI + ATRIBUSI SHAP</text>
+        <rect x="24" y="40" width="40" height="100" fill="#38bdf8" />
+        <rect x="74" y="84" width="40" height="56" fill="#f87171" />
+        <line x1="18" y1="84" x2="124" y2="84" stroke="#fde68a" strokeDasharray="4 3" />
+        <text x="24" y="156" fill="#94a3b8" fontSize="9">Data Asli</text>
+        <text x="70" y="156" fill="#94a3b8" fontSize="9">Label Acak</text>
+        <g fill="#38bdf8">
+          <rect x="160" y="36" width="100" height="14" /><rect x="160" y="60" width="76" height="14" />
+          <rect x="160" y="84" width="54" height="14" /><rect x="160" y="108" width="32" height="14" />
+        </g>
+        <g fill="#94a3b8" fontSize="9">
+          <text x="134" y="47">tenure</text><text x="134" y="71">contract</text><text x="134" y="95">charges</text><text x="134" y="119">fiber</text>
+        </g>
+      </svg>
+    );
+  } else {
+    return (
+      <svg viewBox="0 0 280 170" width="280" height="170" aria-hidden="true">
+        <text x="10" y="16" fill="#facc15" fontSize="10" fontWeight="700">BRANKAS TERBUKA + MAHKOTA JUARA</text>
+        <rect x="20" y="36" width="100" height="110" rx="8" fill="#1a1218" stroke="#f87171" strokeWidth="2" />
+        <path d="M120 36 L156 48 V136 L120 146Z" fill="#3b1d1d" stroke="#f87171" />
+        <path d="M46 92 l16 16 l34 -34" fill="none" stroke="#4ade80" strokeWidth="7" strokeLinecap="round" />
+        <path d="M170 130 L176 82 L198 108 L220 70 L242 108 L264 82 L270 130Z" fill="#facc15" stroke="#fde68a" strokeWidth="2" />
+        <circle cx="220" cy="122" r="5" fill="#f87171" />
+        <circle cx="196" cy="122" r="4" fill="#38bdf8" />
+        <circle cx="244" cy="122" r="4" fill="#c084fc" />
+      </svg>
+    );
+  }
+}
+
+// =============================================================================
+// MAIN COMPONENT: SHADOW ARENA DEBATE
+// =============================================================================
+export default function ShadowArenaDebate() {
+  const [step, setStep] = useState(1);
+  const [autoPlay, setAutoPlay] = useState(false);
+  const [speed, setSpeed] = useState(1);
+  const [muted, setMuted] = useState(false);
+  const [dsIdx, setDsIdx] = useState(0);
+  const [modal, setModal] = useState(null); // 'dialog' | 'board' | 'nb' | 'upload' | null
+  const [customDataset, setCustomDataset] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState(null);
+  const [scale, setScale] = useState(1);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+
+  const audioCtxRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  // Auto-scaler
+  useEffect(() => {
+    function updateScale() {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      setScale(Math.min(vw / 1280, vh / 720));
+    }
+    updateScale();
+    window.addEventListener('resize', updateScale);
+    return () => window.removeEventListener('resize', updateScale);
+  }, []);
+
+  // Web Audio Synthesizer
+  const playSound = useCallback((type) => {
+    if (muted) return;
+    try {
+      if (!audioCtxRef.current) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtxRef.current = new AudioContext();
+      }
+      if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+
+      const now = audioCtxRef.current.currentTime;
+      const osc = audioCtxRef.current.createOscillator();
+      const gain = audioCtxRef.current.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtxRef.current.destination);
+
+      if (type === 'step') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.08);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        osc.start(now);
+        osc.stop(now + 0.08);
+      } else if (type === 'veto') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.linearRampToValueAtTime(140, now + 0.25);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.linearRampToValueAtTime(0.001, now + 0.25);
+        osc.start(now);
+        osc.stop(now + 0.25);
+      } else if (type === 'crown') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523.25, now);
+        osc.frequency.setValueAtTime(659.25, now + 0.1);
+        osc.frequency.setValueAtTime(783.99, now + 0.2);
+        osc.frequency.setValueAtTime(1046.50, now + 0.3);
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        osc.start(now);
+        osc.stop(now + 0.5);
+      }
+    } catch (e) {}
+  }, [muted]);
+
+  // Active dataset
+  const activeDataset = useMemo(() => {
+    if (dsIdx === 2 && customDataset) return customDataset;
+    return DATASETS[dsIdx] || DATASETS[0];
+  }, [dsIdx, customDataset]);
+
+  const stepData = STEPS[step - 1];
+  const activeAgentIdx = stepData[0];
+  const activeAgent = AGENTS[activeAgentIdx];
+  const phaseIdx = step <= 3 ? 0 : step <= 6 ? 1 : step <= 9 ? 2 : step <= 14 ? 3 : step <= 18 ? 4 : step <= 21 ? 5 : step <= 25 ? 6 : 7;
+
+  // Text formatter
+  const formatText = useCallback((text) => {
+    return text
+      .replace(/\{name\}/g, activeDataset.name)
+      .replace(/\{target\}/g, activeDataset.target)
+      .replace(/\{keyFeature\}/g, activeDataset.keyFeature)
+      .replace(/\{summary\}/g, activeDataset.summary)
+      .replace(/\{imbalance\}/g, activeDataset.imbalance)
+      .replace(/\{leakWarning\}/g, activeDataset.leakWarning);
+  }, [activeDataset]);
+
+  // Navigation handlers
+  const handleNext = useCallback(() => {
+    if (step < 28) {
+      setStep(s => {
+        const next = s + 1;
+        const nextAg = STEPS[next - 1][0];
+        if (next === 28) playSound('crown');
+        else if (nextAg === 5) playSound('veto');
+        else playSound('step');
+        return next;
+      });
+    } else {
+      setAutoPlay(false);
+    }
+  }, [step, playSound]);
+
+  const handlePrev = useCallback(() => {
+    if (step > 1) {
+      setStep(s => s - 1);
+      playSound('step');
+    }
+  }, [step, playSound]);
+
+  const handleReset = useCallback(() => {
+    setAutoPlay(false);
+    setStep(1);
+    playSound('step');
+  }, [playSound]);
+
+  // Timer for auto-play
+  useEffect(() => {
+    if (!autoPlay) return;
+    const interval = 3000 / speed;
+    const timer = setInterval(() => {
+      if (step >= 28) {
+        setAutoPlay(false);
+      } else {
+        handleNext();
+      }
+    }, interval);
+    return () => clearInterval(timer);
+  }, [autoPlay, speed, step, handleNext]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === 'Escape') setModal(null);
+      if (modal) return;
+      if (e.key === 'ArrowRight') handleNext();
+      else if (e.key === 'ArrowLeft') handlePrev();
+      else if (e.key === ' ') { e.preventDefault(); setAutoPlay(a => !a); }
+      else if (e.key === 'r' || e.key === 'R') handleReset();
+      else if (e.key === 'm' || e.key === 'M') setMuted(m => !m);
+      else if (e.key === '1') setDsIdx(0);
+      else if (e.key === '2') setDsIdx(1);
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [modal, handleNext, handlePrev, handleReset]);
+
+  // CSV Drag and drop / upload handler
+  const handleFileUpload = (file) => {
+    setUploadStatus({ type: 'info', msg: `Memproses ${file.name}...` });
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+        if (lines.length < 2) throw new Error('File CSV kosong atau kurang dari 2 baris');
+        const header = lines[0].split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+        const rowCount = lines.length - 1;
+        const colCount = header.length;
+        const targetCol = header[header.length - 1];
+        const keyCol = header[0];
+
+        const newDs = {
+          id: 'custom',
+          name: file.name.replace(/\.csv$/i, ''),
+          target: targetCol,
+          keyFeature: keyCol,
+          rows: rowCount,
+          cols: colCount,
+          imbalance: 'Terdiversifikasi',
+          summary: `${rowCount.toLocaleString()} baris, ${colCount} kolom`,
+          leakWarning: `${keyCol}: Audit kebocoran berjalan`
+        };
+        setCustomDataset(newDs);
+        setDsIdx(2);
+        setUploadStatus({ type: 'success', msg: `Sukses! ${file.name} (${rowCount} baris, ${colCount} kolom) diaktifkan ke arena.` });
+        setTimeout(() => setModal(null), 800);
+      } catch (err) {
+        setUploadStatus({ type: 'error', msg: `Gagal membaca CSV: ${err.message}` });
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Tail geometry for live speech bubble (520px width)
+  const tailStyle = useMemo(() => {
+    if ([0, 3].includes(activeAgentIdx)) {
+      return {
+        left: '-6px',
+        top: '22px',
+        borderLeft: `1.5px solid ${activeAgent.color}`,
+        borderBottom: `1.5px solid ${activeAgent.color}`,
+      };
+    } else if ([4, 5].includes(activeAgentIdx)) {
+      return {
+        right: '-6px',
+        top: '22px',
+        borderTop: `1.5px solid ${activeAgent.color}`,
+        borderRight: `1.5px solid ${activeAgent.color}`,
+      };
+    } else if (activeAgentIdx === 1) {
+      return {
+        left: '254px',
+        top: '-6px',
+        borderTop: `1.5px solid ${activeAgent.color}`,
+        borderLeft: `1.5px solid ${activeAgent.color}`,
+      };
+    } else {
+      return {
+        left: '254px',
+        bottom: '-6px',
+        borderBottom: `1.5px solid ${activeAgent.color}`,
+        borderRight: `1.5px solid ${activeAgent.color}`,
+      };
+    }
+  }, [activeAgentIdx, activeAgent.color]);
+
+  // Leaderboard data
+  const sh = (minS, val) => step >= minS ? val : '-';
+  const leaderboardRows = [
+    { m: 'Logistic Regression L2', auc: sh(16, '0.846'), pr: sh(16, '0.661'), p: sh(20, 'baseline'), br: sh(21, '0.135'), gap: sh(27, '0.004'), champ: step >= 28 },
+    { m: 'Random Forest (100 Trees)', auc: sh(17, '0.843'), pr: sh(17, '0.652'), p: sh(20, 'p = 0.41'), br: sh(21, '0.137'), gap: '-', champ: false },
+    { m: 'Gradient Boosting / LightGBM', auc: sh(18, '0.846'), pr: sh(18, '0.663'), p: sh(20, 'p = 0.90'), br: sh(21, '0.135'), gap: '-', champ: false }
+  ];
+
+  return (
+    <div style={{
+      width: '100vw',
+      height: '100vh',
+      background: '#070c14',
+      overflow: 'hidden',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontFamily: "'Chakra Petch', ui-sans-serif, 'Segoe UI', system-ui, sans-serif"
+    }}>
+      {/* 1280x720 Auto-Scaled Canvas */}
+      <div style={{
+        position: 'relative',
+        width: '1280px',
+        height: '720px',
+        transform: `scale(${scale})`,
+        transformOrigin: 'center center',
+        background: '#070c14',
+        overflow: 'hidden',
+        boxShadow: '0 0 50px rgba(0,0,0,0.85)',
+        userSelect: 'none'
+      }}>
+        
+        {/* TOP HEADER DOCK (56px Single-Row Flex Dock) */}
+        <header style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          flexWrap: 'nowrap',
+          height: '56px',
+          padding: '0 16px',
+          background: '#0d1522',
+          borderBottom: '1px solid #1e293b',
+          position: 'relative',
+          zIndex: 10
+        }}>
+          {/* Left: Dataset Tabs (Short labels: "Telco", "Bank (demo)", "CSV") */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+            {['Telco', 'Bank (demo)'].map((name, i) => {
+              const active = dsIdx === i;
+              const borderCol = active ? (i === 0 ? '#2dd4bf' : '#facc15') : '#334155';
+              const bgCol = active ? (i === 0 ? '#0f3a3a' : '#2d240a') : '#0d1522';
+              const textCol = active ? (i === 0 ? '#99f6e4' : '#fef08a') : '#cbd5e1';
+              return (
+                <button
+                  key={name}
+                  onClick={() => { setDsIdx(i); playSound('step'); }}
+                  style={{
+                    whiteSpace: 'nowrap',
+                    flex: 'none',
+                    height: '34px',
+                    padding: '0 12px',
+                    fontSize: '12px',
+                    borderRadius: '8px',
+                    border: `1px solid ${borderCol}`,
+                    background: bgCol,
+                    color: textCol,
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {name}
+                </button>
+              );
+            })}
+            {customDataset && (
+              <button
+                onClick={() => { setDsIdx(2); playSound('step'); }}
+                style={{
+                  whiteSpace: 'nowrap',
+                  flex: 'none',
+                  height: '34px',
+                  padding: '0 12px',
+                  fontSize: '12px',
+                  borderRadius: '8px',
+                  border: `1px solid ${dsIdx === 2 ? '#f472b6' : '#475569'}`,
+                  background: dsIdx === 2 ? '#3b1227' : '#0d1522',
+                  color: dsIdx === 2 ? '#fbcfe8' : '#cbd5e1',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                CSV
+              </button>
+            )}
+          </div>
+
+          {/* Center: Primary Navigation Controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, justifyContent: 'center', minWidth: 0 }}>
+            <button
+              onClick={handlePrev}
+              style={{
+                whiteSpace: 'nowrap',
+                flex: 'none',
+                height: '34px',
+                padding: '0 12px',
+                fontSize: '12px',
+                borderRadius: '8px',
+                border: '1px solid #334155',
+                background: '#0d1522',
+                color: '#e2e8f0',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              PREV
+            </button>
+
+            {/* Stage Indicator Pill */}
+            <div style={{
+              maxWidth: '420px',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              height: '34px',
+              borderRadius: '999px',
+              padding: '0 14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              border: `1px solid ${activeAgent.color}`,
+              background: activeAgent.bg,
+              minWidth: 0,
+              flex: '0 1 auto'
+            }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: activeAgent.color, flex: 'none' }} />
+              <span style={{ fontSize: '11px', fontWeight: 800, color: activeAgent.color, flex: 'none' }}>{activeAgent.name}</span>
+              <span style={{ fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: '#cbd5e1', maxWidth: '180px' }}>
+                {stepData[1]}
+              </span>
+              <span style={{ fontSize: '11px', color: '#94a3b8', fontFamily: "'JetBrains Mono', monospace", flex: 'none' }}>
+                Babak {step} / 28
+              </span>
+            </div>
+
+            <button
+              onClick={handleNext}
+              style={{
+                whiteSpace: 'nowrap',
+                flex: 'none',
+                height: '34px',
+                padding: '0 12px',
+                fontSize: '12px',
+                borderRadius: '8px',
+                border: '1px solid #2dd4bf',
+                background: '#0f3a3a',
+                color: '#99f6e4',
+                fontWeight: 700,
+                boxShadow: '0 0 10px rgba(45,212,191,.35)',
+                cursor: 'pointer'
+              }}
+            >
+              NEXT
+            </button>
+
+            <button
+              onClick={() => setAutoPlay(a => !a)}
+              style={{
+                whiteSpace: 'nowrap',
+                flex: 'none',
+                height: '34px',
+                padding: '0 12px',
+                fontSize: '12px',
+                borderRadius: '8px',
+                border: '1px solid #334155',
+                background: '#0d1522',
+                color: autoPlay ? '#facc15' : '#e2e8f0',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              {autoPlay ? 'PAUSE' : 'AUTO-PLAY'}
+            </button>
+
+            <button
+              onClick={() => setSpeed(s => (s === 1 ? 2 : 1))}
+              style={{
+                whiteSpace: 'nowrap',
+                flex: 'none',
+                height: '34px',
+                padding: '0 10px',
+                minWidth: '38px',
+                fontSize: '12px',
+                borderRadius: '8px',
+                border: '1px solid #334155',
+                background: '#0d1522',
+                color: '#e2e8f0',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              {speed}x
+            </button>
+
+            <button
+              onClick={handleReset}
+              style={{
+                whiteSpace: 'nowrap',
+                flex: 'none',
+                height: '34px',
+                padding: '0 12px',
+                fontSize: '12px',
+                borderRadius: '8px',
+                border: '1px solid #334155',
+                background: '#0d1522',
+                color: '#fca5a5',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              RESET
+            </button>
+          </div>
+
+          {/* Right: Modals & "Lainnya" Dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+            <button
+              onClick={() => setModal('dialog')}
+              style={{
+                whiteSpace: 'nowrap',
+                flex: 'none',
+                height: '34px',
+                padding: '0 12px',
+                fontSize: '12px',
+                borderRadius: '8px',
+                border: '1px solid #334155',
+                background: '#0d1522',
+                color: '#e2e8f0',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              TRANSMISI
+            </button>
+            <button
+              onClick={() => setModal('board')}
+              style={{
+                whiteSpace: 'nowrap',
+                flex: 'none',
+                height: '34px',
+                padding: '0 12px',
+                fontSize: '12px',
+                borderRadius: '8px',
+                border: '1px solid #334155',
+                background: '#0d1522',
+                color: '#e2e8f0',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              KLASEMEN
+            </button>
+            <button
+              onClick={() => setModal('nb')}
+              style={{
+                whiteSpace: 'nowrap',
+                flex: 'none',
+                height: '34px',
+                padding: '0 12px',
+                fontSize: '12px',
+                borderRadius: '8px',
+                border: '1px solid #334155',
+                background: '#0d1522',
+                color: '#e2e8f0',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              NOTEBOOK
+            </button>
+
+            {/* Menu "Lainnya" Dropdown */}
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <button
+                onClick={() => setMoreMenuOpen(o => !o)}
+                style={{
+                  whiteSpace: 'nowrap',
+                  flex: 'none',
+                  height: '34px',
+                  padding: '0 12px',
+                  fontSize: '12px',
+                  borderRadius: '8px',
+                  border: '1px solid #334155',
+                  background: '#0d1522',
+                  color: '#e2e8f0',
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  cursor: 'pointer'
+                }}
+              >
+                <span>Lainnya</span>
+                <span style={{ fontSize: '9px', opacity: 0.8 }}>&#9660;</span>
+              </button>
+
+              {moreMenuOpen && (
+                <div style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: '40px',
+                  width: '220px',
+                  background: '#0d1522',
+                  border: '1.5px solid #334155',
+                  borderRadius: '10px',
+                  boxShadow: '0 12px 35px rgba(0,0,0,.85)',
+                  padding: '8px',
+                  zIndex: 100,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px'
+                }}>
+                  <div style={{
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    background: '#070c14',
+                    border: '1px solid #10b981',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    color: '#6ee7b7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', flex: 'none' }} />
+                    <span>Cloud AI</span>
+                  </div>
+                  <button
+                    onClick={() => { setMuted(m => !m); playSound('step'); }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      background: '#162338',
+                      border: '1px solid #334155',
+                      color: '#cbd5e1',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <span>Audio</span>
+                    <span style={{ color: muted ? '#f87171' : '#2dd4bf', fontWeight: 800 }}>
+                      {muted ? 'MUTED' : 'ON'}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => { setMoreMenuOpen(false); setModal('upload'); }}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '6px 10px',
+                      borderRadius: '6px',
+                      background: '#162338',
+                      border: '1px dashed #f472b6',
+                      color: '#fbcfe8',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <span>Unggah CSV</span>
+                  </button>
+                  <div style={{
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    background: '#070c14',
+                    border: '1px solid #1e293b'
+                  }}>
+                    <div style={{ fontSize: '10px', color: '#94a3b8', display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                      <span>INTEGRITAS SISTEM</span><span>100 HP</span>
+                    </div>
+                    <div style={{ height: '5px', borderRadius: '3px', background: '#1e293b', marginTop: '3px', overflow: 'hidden' }}>
+                      <div style={{ height: '5px', borderRadius: '3px', background: '#2dd4bf', width: '100%' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+
+        {/* ARENA FLOOR (656px) */}
+        <main style={{ position: 'relative', width: '1280px', height: '656px', background: '#070c14', overflow: 'hidden' }}>
+          {/* Ambient Glow */}
+          <div style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: '1280px',
+            height: '656px',
+            background: `radial-gradient(circle at 50% 45%, ${activeAgent.color}26, transparent 62%)`,
+            pointerEvents: 'none'
+          }} />
+
+          {/* SVG Tactical Conduit Links */}
+          <svg viewBox="0 0 1280 656" width="1280" height="656" style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none' }} aria-hidden="true">
+            <defs>
+              <pattern id="jsx-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M40 0H0V40" fill="none" stroke="#1e293b" strokeWidth="1" opacity=".45" />
+              </pattern>
+            </defs>
+            <rect width="1280" height="656" fill="url(#jsx-grid)" />
+            <polygon points="640,44 920,186 920,470 640,612 360,470 360,186" fill="none" stroke="#1e3a4a" strokeWidth="1.5" strokeDasharray="6 8" />
+            <g stroke="#1e3a4a" strokeWidth="1">
+              <line x1="200" y1="170" x2="640" y2="243" />
+              <line x1="200" y1="500" x2="640" y2="243" />
+              <line x1="640" y1="92" x2="640" y2="243" />
+              <line x1="640" y1="535" x2="640" y2="243" />
+              <line x1="1080" y1="170" x2="640" y2="243" />
+              <line x1="1080" y1="500" x2="640" y2="243" />
+            </g>
+            <line
+              x1={activeAgent.x}
+              y1={activeAgent.y}
+              x2="640"
+              y2="243"
+              stroke={activeAgent.color}
+              strokeWidth="2.5"
+              opacity=".85"
+              strokeDasharray="10 6"
+            />
+          </svg>
+
+          {/* Center Radar Beacon (640, 243) */}
+          <div style={{
+            position: 'absolute',
+            left: '640px',
+            top: '243px',
+            width: '180px',
+            height: '180px',
+            margin: '-90px 0 0 -90px',
+            borderRadius: '50%',
+            border: '1px solid #1e3a4a',
+            background: 'radial-gradient(circle, rgba(45,212,191,.08), transparent 70%)',
+            pointerEvents: 'none',
+            zIndex: 1
+          }} />
+          <div style={{
+            position: 'absolute',
+            left: '640px',
+            top: '243px',
+            width: '180px',
+            height: '180px',
+            margin: '-90px 0 0 -90px',
+            borderRadius: '50%',
+            background: 'conic-gradient(from 0deg, rgba(45,212,191,.35), transparent 25%)',
+            animation: 'spin 5s linear infinite',
+            pointerEvents: 'none',
+            zIndex: 1
+          }} />
+          <div style={{
+            position: 'absolute',
+            left: '640px',
+            top: '243px',
+            width: '230px',
+            height: '230px',
+            margin: '-115px 0 0 -115px',
+            borderRadius: '50%',
+            border: '1px dashed #334155',
+            animation: 'spin 30s linear infinite',
+            pointerEvents: 'none',
+            zIndex: 1
+          }} />
+
+          {/* CENTER STAGE CARD (280x170 at left:500, top:158 - Rasio 280:170 Utuh & Latar Solid #0a111c Layer 3) */}
+          <div style={{
+            position: 'absolute',
+            left: '500px',
+            top: '158px',
+            width: '280px',
+            height: '170px',
+            aspectRatio: '280/170',
+            borderRadius: '12px',
+            background: '#0a111c',
+            border: `1.5px solid ${activeAgent.color}`,
+            boxShadow: '0 0 25px rgba(0,0,0,.85)',
+            overflow: 'hidden',
+            zIndex: 3,
+            transition: 'all .3s ease'
+          }}>
+            <CenterPhaseSvg phaseIdx={phaseIdx} step={step} />
+          </div>
+
+          {/* MILESTONE STATUS PILL (left: 640, top: 346 - Jarak >= 16px dari Balon) */}
+          <div style={{
+            position: 'absolute',
+            left: '640px',
+            top: '346px',
+            transform: 'translate(-50%, -50%)',
+            padding: '5px 16px',
+            borderRadius: '999px',
+            background: 'rgba(7,12,20,.95)',
+            border: `1.5px solid ${activeAgent.color}`,
+            boxShadow: `0 0 22px ${activeAgent.color}55`,
+            color: activeAgent.color,
+            fontSize: '12px',
+            fontWeight: 700,
+            whiteSpace: 'nowrap',
+            zIndex: 4,
+            transition: 'all .3s ease'
+          }}>
+            {formatText(stepData[2])}
+          </div>
+
+          {/* 6 AGENT HEX PEDESTALS */}
+          {AGENTS.map((a, i) => {
+            const isSpeaker = i === activeAgentIdx;
+            return (
+              <div
+                key={a.id}
+                onClick={() => {
+                  const target = STEPS.findIndex(s => s[0] === i);
+                  if (target !== -1) {
+                    setStep(target + 1);
+                    playSound('step');
+                  }
+                }}
+                style={{
+                  position: 'absolute',
+                  left: `${a.x - 110}px`,
+                  top: `${a.y - 50}px`,
+                  width: '220px',
+                  height: '100px',
+                  boxSizing: 'border-box',
+                  padding: '0 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  borderRadius: '16px',
+                  border: isSpeaker ? `2.5px solid ${a.color}` : '1.5px solid #233e66',
+                  background: a.bg,
+                  opacity: isSpeaker ? 1 : 0.9,
+                  transform: `scale(${isSpeaker ? 1.05 : 1})`,
+                  boxShadow: isSpeaker ? `0 0 30px ${a.color}55` : 'none',
+                  animation: isSpeaker ? 'bob 2s ease-in-out infinite' : 'none',
+                  transition: 'all .25s cubic-bezier(.4, 0, .2, 1)',
+                  cursor: 'pointer',
+                  zIndex: isSpeaker ? 4 : 2
+                }}
+              >
+                {isSpeaker && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '-11px',
+                    right: '14px',
+                    padding: '2px 9px',
+                    borderRadius: '999px',
+                    background: a.color,
+                    color: '#070c14',
+                    fontSize: '10px',
+                    fontWeight: 800,
+                    letterSpacing: '.08em'
+                  }}>
+                    SEDANG BICARA
+                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    flex: 'none',
+                    width: '64px',
+                    height: '64px',
+                    borderRadius: '50%',
+                    border: `2px solid ${a.color}`,
+                    background: 'radial-gradient(circle at 50% 35%, #16233a, #070c14)',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    alignItems: 'flex-end',
+                    justifyContent: 'center'
+                  }}>
+                    <AvatarSvg agentIdx={i} color={a.color} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 800, color: a.color }}>{a.name}</div>
+                    <div style={{ fontSize: '11px', color: isSpeaker ? '#ffffff' : '#cbd5e1', fontWeight: 600 }}>{a.role}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* DYNAMIC COMPACT LIVE SPEECH BUBBLE (top:374, width:520, max-height:7.8em, 4 baris) */}
+          <div
+            onClick={() => setModal('dialog')}
+            title="Klik untuk membuka Transmisi Dialog Lengkap"
+            style={{
+              position: 'absolute',
+              left: '380px',
+              top: '374px',
+              width: '520px',
+              maxWidth: '520px',
+              maxHeight: '7.8em',
+              boxSizing: 'border-box',
+              padding: '8px 14px',
+              borderRadius: '12px',
+              border: `1.5px solid ${activeAgent.color}`,
+              background: activeAgent.bg,
+              boxShadow: '0 0 25px rgba(0,0,0,.75)',
+              overflow: 'hidden',
+              cursor: 'pointer',
+              zIndex: 4,
+              transition: 'all .2s ease'
+            }}
+          >
+            {/* Dynamic Pointer Tail */}
+            <div style={{
+              position: 'absolute',
+              width: '12px',
+              height: '12px',
+              transform: 'rotate(45deg)',
+              background: activeAgent.bg,
+              ...tailStyle
+            }} />
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', fontWeight: 800, letterSpacing: '.08em', color: activeAgent.color }}>
+                <span>{activeAgent.name}</span>
+                <span style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: '12px' }} aria-hidden="true">
+                  <span style={{ width: '3px', height: '12px', background: activeAgent.color, animation: 'pulse .8s infinite' }} />
+                  <span style={{ width: '3px', height: '7px', background: activeAgent.color, animation: 'pulse .8s .2s infinite' }} />
+                  <span style={{ width: '3px', height: '10px', background: activeAgent.color, animation: 'pulse .8s .4s infinite' }} />
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 700, letterSpacing: '.05em' }}>
+                  {PHASE_NAMES[phaseIdx]} | STEP {step}
+                </span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setModal('dialog'); }}
+                  style={{
+                    background: `${activeAgent.color}25`,
+                    border: `1px solid ${activeAgent.color}`,
+                    color: activeAgent.color,
+                    fontSize: '9.5px',
+                    fontWeight: 700,
+                    borderRadius: '4px',
+                    padding: '2px 7px',
+                    cursor: 'pointer',
+                    transition: 'all .15s ease'
+                  }}
+                >
+                  Baca lengkap &rarr;
+                </button>
+              </div>
+            </div>
+            <div style={{
+              fontSize: '13.5px',
+              lineHeight: 1.45,
+              display: '-webkit-box',
+              WebkitLineClamp: 4,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              marginTop: '3px',
+              color: '#f8fafc'
+            }}>
+              “{formatText(stepData[3])}”
+            </div>
+          </div>
+
+          {/* BOTTOM PHASE DOCK (left: 20, bottom: 8, width: 1240) */}
+          <nav style={{
+            position: 'absolute',
+            left: '20px',
+            bottom: '8px',
+            width: '1240px',
+            height: '24px',
+            display: 'flex',
+            gap: '6px',
+            zIndex: 5
+          }}>
+            {PHASE_NAMES.map((name, i) => {
+              const isCur = i === phaseIdx;
+              const isPast = i < phaseIdx;
+              return (
+                <button
+                  key={name}
+                  onClick={() => { setStep(PHASE_STARTS[i]); playSound('step'); }}
+                  style={{
+                    flex: 1,
+                    height: '24px',
+                    borderRadius: '6px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    letterSpacing: '.06em',
+                    border: `1px solid ${isCur ? activeAgent.color : '#334155'}`,
+                    background: isCur ? activeAgent.bg : isPast ? `${activeAgent.color}25` : '#0d1522',
+                    color: isCur ? activeAgent.color : isPast ? '#cbd5e1' : '#64748b',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {name}
+                </button>
+              );
+            })}
+          </nav>
+        </main>
+
+        {/* MODAL: TRANSMISI DIALOG */}
+        {modal === 'dialog' && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(7,12,20,0.85)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 50,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <div style={{
+              width: '520px',
+              padding: '22px',
+              borderRadius: '14px',
+              background: '#0d1522',
+              border: `1.5px solid ${activeAgent.color}`,
+              boxShadow: '0 10px 50px rgba(0,0,0,.85)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '14px', fontWeight: 800, color: activeAgent.color }}>TRANSMISI: {activeAgent.name}</span>
+                <button
+                  onClick={() => setModal(null)}
+                  style={{ border: '1px solid #334155', background: 'none', color: '#e2e8f0', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', cursor: 'pointer' }}
+                >
+                  TUTUP [ESC]
+                </button>
+              </div>
+              <div style={{ fontSize: '14px', lineHeight: 1.55, marginTop: '14px', color: '#f1f5f9' }}>
+                {formatText(stepData[3])}
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', marginTop: '16px' }}>INTISARI STRATEGI & PRINSIP OCCAM</div>
+              <div style={{ fontSize: '13px', lineHeight: 1.5, marginTop: '4px', color: '#cbd5e1', background: '#070c14', padding: '12px', borderRadius: '8px', border: '1px solid #1e293b' }}>
+                {formatText(stepData[4])}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: KLASEMEN MODEL */}
+        {modal === 'board' && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(7,12,20,0.85)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 50,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <div style={{
+              width: '920px',
+              padding: '22px',
+              borderRadius: '14px',
+              background: '#0d1522',
+              border: '1.5px solid #334155',
+              boxShadow: '0 10px 50px rgba(0,0,0,.85)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontSize: '16px', fontWeight: 800, color: '#e2e8f0' }}>PAPAN KLASEMEN MODEL TURNAMEN</span>
+                  <span style={{ fontSize: '12px', color: '#94a3b8', marginLeft: '10px' }}>CV 5-Fold x3 + 20% Sealed Holdout</span>
+                </div>
+                <button
+                  onClick={() => setModal(null)}
+                  style={{ border: '1px solid #334155', background: 'none', color: '#e2e8f0', borderRadius: '6px', padding: '4px 12px', fontSize: '12px', cursor: 'pointer' }}
+                >
+                  TUTUP [ESC]
+                </button>
+              </div>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: '2fr repeat(5, minmax(0,1fr))',
+                gap: '8px',
+                marginTop: '16px',
+                fontSize: '11px',
+                color: '#94a3b8',
+                fontWeight: 800,
+                borderBottom: '1px solid #334155',
+                paddingBottom: '8px'
+              }}>
+                <span>MODEL</span><span>CV ROC-AUC</span><span>PR-AUC</span><span>NADEAU-BENGIO P</span><span>BRIER SCORE</span><span>HOLDOUT GAP</span>
+              </div>
+              {leaderboardRows.map(r => (
+                <div
+                  key={r.m}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '2fr repeat(5, minmax(0,1fr))',
+                    gap: '8px',
+                    padding: '12px 0',
+                    borderTop: '1px solid #1e293b',
+                    fontSize: '13px',
+                    color: r.champ ? '#facc15' : '#cbd5e1',
+                    fontWeight: r.champ ? 800 : 400,
+                    background: r.champ ? 'rgba(250,204,21,.08)' : 'transparent',
+                    paddingLeft: r.champ ? '8px' : '0px',
+                    borderRadius: '6px'
+                  }}
+                >
+                  <span>{r.m} {r.champ ? ' [JUARA OCCAM]' : ''}</span>
+                  <span>{r.auc}</span><span>{r.pr}</span><span>{r.p}</span><span>{r.br}</span><span>{r.gap}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: UNDUH NOTEBOOK */}
+        {modal === 'nb' && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(7,12,20,0.85)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 50,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <div style={{
+              width: '920px',
+              padding: '22px',
+              borderRadius: '14px',
+              background: '#0d1522',
+              border: '1.5px solid #334155',
+              boxShadow: '0 10px 50px rgba(0,0,0,.85)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '16px', fontWeight: 800, color: '#e2e8f0' }}>PIPELINE PYTHON REPRODUCIBLE</span>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(NOTEBOOK_CODE);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    }}
+                    style={{ border: '1px solid #2dd4bf', background: '#0f3a3a', color: '#99f6e4', borderRadius: '6px', padding: '5px 12px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    {copied ? 'TERSALIN!' : 'SALIN KODE'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const blob = new Blob([NOTEBOOK_CODE], { type: 'text/x-python' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = 'shadow_ml_pipeline.py';
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                    style={{ border: '1px solid #38bdf8', background: '#0e2a44', color: '#7dd3fc', borderRadius: '6px', padding: '5px 12px', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    UNDUH .PY
+                  </button>
+                  <button
+                    onClick={() => setModal(null)}
+                    style={{ border: '1px solid #334155', background: 'none', color: '#e2e8f0', borderRadius: '6px', padding: '5px 12px', fontSize: '11px', cursor: 'pointer' }}
+                  >
+                    TUTUP
+                  </button>
+                </div>
+              </div>
+              <div style={{ marginTop: '14px', maxHeight: '480px', overflow: 'auto', padding: '16px', borderRadius: '8px', background: '#070c14', border: '1px solid #1e293b' }}>
+                <pre style={{ margin: 0, fontSize: '12px', lineHeight: 1.5, color: '#a7f3d0', fontFamily: 'Consolas, monospace' }}>
+                  {NOTEBOOK_CODE}
+                </pre>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: UNGGAH CSV */}
+        {modal === 'upload' && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(7,12,20,0.85)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 50,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <div style={{
+              width: '540px',
+              padding: '22px',
+              borderRadius: '14px',
+              background: '#0d1522',
+              border: '1.5px solid #f472b6',
+              boxShadow: '0 10px 50px rgba(0,0,0,.85)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '15px', fontWeight: 800, color: '#f472b6' }}>UNGGAH DATASET CSV KUSTOM</span>
+                <button
+                  onClick={() => setModal(null)}
+                  style={{ border: '1px solid #334155', background: 'none', color: '#e2e8f0', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', cursor: 'pointer' }}
+                >
+                  TUTUP [ESC]
+                </button>
+              </div>
+              <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px' }}>
+                Unggah berkas CSV tabular untuk diaudit secara langsung di arena oleh ke-6 agen AI tanpa mengirim data ke server cloud.
+              </p>
+
+              <div
+                onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (e.dataTransfer.files.length) handleFileUpload(e.dataTransfer.files[0]);
+                }}
+                style={{
+                  marginTop: '16px',
+                  border: '2px dashed #475569',
+                  borderRadius: '10px',
+                  padding: '30px',
+                  textAlign: 'center',
+                  background: '#070c14',
+                  cursor: 'pointer'
+                }}
+              >
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#cbd5e1' }}>Tarik & lepaskan berkas CSV ke sini</div>
+                <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>atau klik untuk memilih berkas dari komputer Anda</div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".csv"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    if (e.target.files.length) handleFileUpload(e.target.files[0]);
+                  }}
+                />
+              </div>
+
+              {uploadStatus && (
+                <div style={{
+                  marginTop: '12px',
+                  fontSize: '12px',
+                  color: uploadStatus.type === 'error' ? '#f87171' : uploadStatus.type === 'success' ? '#4ade80' : '#cbd5e1'
+                }}>
+                  {uploadStatus.msg}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
