@@ -32,11 +32,14 @@ from shadow_agents.llm_cloud import HybridAgentRouter
 # =============================================================================
 # KONFIGURASI STREAMLIT (RESPONSIVE FULL-CANVAS)
 # =============================================================================
-st.set_page_config(
-    page_title="SHADOW · AI Battle Arena",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
+try:
+    st.set_page_config(
+        page_title="SHADOW · AI Battle Arena",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
+except Exception:
+    pass
 
 # Custom High-Tech Tactical CSS
 st.markdown("""
@@ -52,12 +55,29 @@ st.markdown("""
         height: 0 !important;
         visibility: hidden !important;
     }
+    /* Force true full-canvas wide layout across all Streamlit versions */
+    div[data-testid="stAppViewContainer"] > section.main {
+        max-width: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+    }
+    div[data-testid="stAppViewBlockContainer"],
+    section.main div.block-container,
     .block-container {
         padding-top: 0.1rem !important;
         padding-bottom: 0.5rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
-        max-width: 1360px !important;
+        max-width: 1440px !important;
+        width: 100% !important;
+    }
+    /* Full width for iframe component container */
+    div[data-testid="stCustomComponentV1"],
+    div[data-testid="stCustomComponentV1"] > iframe {
+        width: 100% !important;
+        max-width: 100% !important;
+        display: block !important;
+        margin: 0 auto !important;
     }
     div[data-testid="stVerticalBlock"] > div {
         margin-bottom: 0.2rem !important;

@@ -2,8 +2,17 @@
 SHADOW — Streamlit Community Cloud Entrypoint
 Machine Learning & AI Battle Arena Dashboard
 """
-from pathlib import Path
 import sys
+from pathlib import Path
+import streamlit as st
+
+# MUST BE THE ABSOLUTE FIRST STREAMLIT COMMAND
+st.set_page_config(
+    page_title="SHADOW · AI Battle Arena",
+    page_icon="🛡️",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
 
 # Ensure repository root is in sys.path
 ROOT_DIR = Path(__file__).resolve().parent
