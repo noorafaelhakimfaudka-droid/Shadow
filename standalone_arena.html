@@ -385,11 +385,16 @@
         <div style="display: flex; gap: 8px;">
           <button id="btn-copy-code" style="border: 1px solid #2dd4bf; background: #0f3a3a; color: #99f6e4; border-radius: 6px; padding: 5px 12px; font-size: 11px; font-weight: 700;">SALIN KODE</button>
           <button id="btn-download-py" style="border: 1px solid #38bdf8; background: #0e2a44; color: #7dd3fc; border-radius: 6px; padding: 5px 12px; font-size: 11px; font-weight: 700;">UNDUH .PY</button>
+          <button id="btn-download-ipynb" style="border: 1px solid #facc15; background: #382c08; color: #fef08a; border-radius: 6px; padding: 5px 12px; font-size: 11px; font-weight: 700;">UNDUH .IPYNB</button>
           <button class="btn-close-modal" style="border: 1px solid #334155; background: none; color: #e2e8f0; border-radius: 6px; padding: 5px 12px; font-size: 11px;">TUTUP</button>
         </div>
       </div>
       <div style="margin-top: 14px; max-height: 480px; overflow: auto; padding: 16px; border-radius: 8px; background: #070c14; border: 1px solid #1e293b;">
         <pre id="notebook-code-block" style="margin: 0; font-size: 12px; line-height: 1.5; color: #a7f3d0; font-family: 'JetBrains Mono', Consolas, monospace;"></pre>
+      </div>
+      <div style="margin-top: 10px; font-size: 11px; color: #94a3b8; display: flex; justify-content: space-between;">
+        <span>Deliverable Jupyter Notebook 11-bab (.ipynb) lengkap juga tersedia di Tab "UNDUH DELIVERABLE NOTEBOOK" di panel bawah.</span>
+        <span style="color: #38bdf8; font-weight: 700;">Bitwise Reproducible · Zero-Leakage</span>
       </div>
     </div>
   </div>
@@ -1361,23 +1366,98 @@ if (btnReadFull) {
 
 document.querySelectorAll('.btn-close-modal').forEach(btn => btn.addEventListener('click', closeModal));
 
-document.getElementById('btn-copy-code').addEventListener('click', () => {
-  navigator.clipboard.writeText(NOTEBOOK_CODE);
-  const btn = document.getElementById('btn-copy-code');
-  const prevText = btn.textContent;
+function copyTextResilient(text, btn) {
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(() => {
+      const prev = btn.textContent;
+      btn.textContent = 'TERSALIN!';
+      setTimeout(() => btn.textContent = prev, 1500);
+    }).catch(() => fallbackCopyExec(text, btn));
+  } else {
+    fallbackCopyExec(text, btn);
+  }
+}
+
+function fallbackCopyExec(text, btn) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  try { document.execCommand('copy'); } catch(e) {}
+  document.body.removeChild(ta);
+  const prev = btn.textContent;
   btn.textContent = 'TERSALIN!';
-  setTimeout(() => btn.textContent = prevText, 1500);
+  setTimeout(() => btn.textContent = prev, 1500);
+}
+
+function downloadBlobOrData(content, filename, mimeType) {
+  try {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 500);
+  } catch (err) {
+    const a = document.createElement('a');
+    a.href = 'data:' + mimeType + ';charset=utf-8,' + encodeURIComponent(content);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => document.body.removeChild(a), 500);
+  }
+}
+
+document.getElementById('btn-copy-code').addEventListener('click', (e) => {
+  copyTextResilient(NOTEBOOK_CODE, e.target);
 });
 
 document.getElementById('btn-download-py').addEventListener('click', () => {
-  const blob = new Blob([NOTEBOOK_CODE], { type: 'text/x-python' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'shadow_ml_pipeline.py';
-  a.click();
-  URL.revokeObjectURL(url);
+  downloadBlobOrData(NOTEBOOK_CODE, 'shadow_ml_pipeline.py', 'text/x-python');
 });
+
+const btnDlIpynb = document.getElementById('btn-download-ipynb');
+if (btnDlIpynb) {
+  btnDlIpynb.addEventListener('click', () => {
+    const ipynbObj = {
+      cells: [
+        {
+          cell_type: "markdown",
+          metadata: {},
+          source: [
+            "# SHADOW ML Laboratory — Pipeline Eksperimen & Model Tervalidasi\n",
+            "### Disintesis Otomatis dari Konsensus Debat 6 Agen AI SHADOW\n\n",
+            "- **Dataset**: Telco Customer Churn\n",
+            "- **Model Unggulan**: Logistic Regression L2 (Occam Champion, p=0.90)\n",
+            "- **Status Validasi**: Bebas Kebocoran Data (Zero-Leakage), Lolos Uji Kanari (AUC 0.504), Holdout AUC 0.842\n"
+          ]
+        },
+        {
+          cell_type: "code",
+          execution_count: null,
+          metadata: {},
+          outputs: [],
+          source: NOTEBOOK_CODE.split('\n').map(l => l + '\n')
+        }
+      ],
+      metadata: {
+        kernelspec: { display_name: "Python 3", language: "python", name: "python3" },
+        language_info: { name: "python", version: "3.10" }
+      },
+      nbformat: 4,
+      nbformat_minor: 5
+    };
+    downloadBlobOrData(JSON.stringify(ipynbObj, null, 2), 'shadow_telco_churn_pipeline.ipynb', 'application/x-ipynb+json');
+  });
+}
 
 // Initialize
 fitToWindow();
